@@ -33,9 +33,21 @@ export class ProductServiceStack extends cdk.Stack {
     const getAllIntegration = new apigateway.LambdaIntegration(getProductsListLambda);
     products.addMethod('GET', getAllIntegration);
 
+    // Adding CORS options
+    products.addCorsPreflight({
+      allowOrigins: ['https://d31cdo0fo49iqu.cloudfront.net'],
+      allowMethods: ['GET'],
+    });
+
     // Products by id resource (/products/{productId})
     const product = products.addResource('{productId}');
     const getByIdIntegration = new apigateway.LambdaIntegration(getProductsByIdLambda);
     product.addMethod('GET', getByIdIntegration);
+
+    // Adding CORS options
+    product.addCorsPreflight({
+      allowOrigins: ['https://d31cdo0fo49iqu.cloudfront.net'],
+      allowMethods: ['GET'],
+    });
   }
 }
