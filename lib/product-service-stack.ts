@@ -12,14 +12,14 @@ export class ProductServiceStack extends cdk.Stack {
 
     // Lambda for getProductsList
     const getProductsListLambda = new lambda.Function(this, 'getProductsListHandler', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'getProductsList.handler',
       code: lambda.Code.fromAsset('lambda'),
     });
 
     // Lambda for getProductsById
     const getProductsByIdLambda = new lambda.Function(this, 'getProductsByIdHandler', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'getProductsById.handler',
       code: lambda.Code.fromAsset('lambda'),
     });
