@@ -1,12 +1,12 @@
 export type Product = {
-    id: string | undefined;
-    title: string | undefined;
-    description: string | undefined;
+    id: string;
+    title: string;
+    description: string;
     price: number;
 }
 
 export type Stock = {
-    product_id: string | undefined,
+    product_id: string,
     count: string | number;
 };
 

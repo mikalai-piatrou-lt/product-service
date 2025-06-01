@@ -1,19 +1,20 @@
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-import * as csv from "csv-parser";
-import { Readable } from "stream";
+import {S3Client, GetObjectCommand, DeleteObjectCommand} from '@aws-sdk/client-s3';
+import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import * as csv from 'csv-parser';
+import { Readable } from 'stream';
+
+const s3Client = new S3Client({ region: process.env.AWS_REGION });
+const sqsClient = new SQSClient({ region: process.env.AWS_REGION });
+
+const bucketName = process.env.BUCKET_NAME;
+const queueUrl = process.env.QUEUE_URL;
 
 export async function handler(event: any) {
-    console.log("importFileParser", event);
-
-    const s3Client = new S3Client({ region: process.env.AWS_REGION });
-
     for (const record of event.Records) {
-        const bucket = record.s3.bucket.name;
-        const key = decodeURIComponent(record.s3.object.key.replace(/\+/g, " "));
-
         try {
+            const key = decodeURIComponent(record.s3.object.key.replace(/\+/g, " "));
             const command = new GetObjectCommand({
-                Bucket: bucket,
+                Bucket: bucketName,
                 Key: key,
             });
 
@@ -28,20 +29,34 @@ export async function handler(event: any) {
             await new Promise((resolve, reject) => {
                 stream
                     .pipe(csv())
-                    .on("data", (data) => {
-                        console.log("Parsed CSV record:", JSON.stringify(data));
+                    .on("data", async (data) => {
+                        const sendMessageParams = {
+                            QueueUrl: queueUrl,
+                            MessageBody: JSON.stringify(data),
+                        };
+                        console.log('Queue URL: ', queueUrl);
+                        console.log('Data: ', JSON.stringify(data));
+
+                        await sqsClient.send(new SendMessageCommand(sendMessageParams));
+                    })
+                    .on("end", async () => {
+                        console.log('All records sent to SQS');
+
+                        const deleteParams = {
+                            Bucket: bucketName,
+                            Key: key,
+                        };
+
+                        await s3Client.send(new DeleteObjectCommand(deleteParams));
+                        console.log('File processed and deleted');
                     })
                     .on("error", (error) => {
                         console.error("Error parsing CSV:", error);
                         reject(error);
-                    })
-                    .on("end", () => {
-                        console.log(`Finished processing ${key}`);
-                        resolve(null);
                     });
             });
         } catch (error) {
-            console.error(`Error processing file ${key}:`, error);
+            console.error(`Error processing file:`, error);
             throw error;
         }
     }

@@ -22,6 +22,10 @@ export class ImportServiceStack extends cdk.Stack {
             ],
         });
 
+        //import existing SQS Queue URL and ARN from ProductServiceStack
+        const catalogItemsQueueUrl = cdk.Fn.importValue('CatalogItemsQueueUrl');
+        const catalogItemsQueueArn = cdk.Fn.importValue('CatalogItemsQueueArn');
+
         const importProductsFileLambda = new lambda.Function(this, 'importProductsFileHandler', {
             runtime: lambda.Runtime.NODEJS_22_X,
             handler: 'importProductsFile.handler',
@@ -50,10 +54,16 @@ export class ImportServiceStack extends cdk.Stack {
             code: lambda.Code.fromAsset('lambda'),
             environment: {
                 BUCKET_NAME: importBucket.bucketName,
+                QUEUE_URL: catalogItemsQueueUrl,
             },
         });
 
         importBucket.grantReadWrite(importFileParserLambda);
+        //permission to send messages from SQS to lambda
+        importFileParserLambda.addToRolePolicy(new cdk.aws_iam.PolicyStatement({
+            actions: ['sqs:SendMessage'],
+            resources: [catalogItemsQueueArn],
+        }));
 
         // Configure S3 event to trigger importFileParserLambda
         importFileParserLambda.addEventSource(new S3EventSource(importBucket, {
