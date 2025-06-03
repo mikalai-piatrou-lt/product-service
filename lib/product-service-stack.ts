@@ -1,28 +1,79 @@
 import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import { Construct } from 'constructs';
-
-// FE URL
-const FRONTEND_URL = 'https://d31cdo0fo49iqu.cloudfront.net';
+import { CORS_OPTIONS } from '../lambda/utils';
 
 export class ProductServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    //import existing table for products
+    const productsTable = dynamodb.Table.fromTableName(this, 'ProductsTable', 'products');
+
+    //import existing table for stocks
+    const stockTable = dynamodb.Table.fromTableName(this, 'StockTable', 'stock');
+
     // Lambda for getProductsList
     const getProductsListLambda = new lambda.Function(this, 'getProductsListHandler', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'getProductsList.handler',
       code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        PRODUCTS_TABLE_NAME: productsTable.tableName,
+        STOCK_TABLE_NAME: stockTable.tableName,
+      },
     });
+
+    //grant read access to getProductsListLambda
+    productsTable.grantReadData(getProductsListLambda);
+    stockTable.grantReadData(getProductsListLambda);
 
     // Lambda for getProductsById
     const getProductsByIdLambda = new lambda.Function(this, 'getProductsByIdHandler', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'getProductsById.handler',
       code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        PRODUCTS_TABLE_NAME: productsTable.tableName,
+        STOCK_TABLE_NAME: stockTable.tableName,
+      },
     });
+
+    //grant read access to getProductsByIdLambda
+    productsTable.grantReadData(getProductsByIdLambda);
+    stockTable.grantReadData(getProductsByIdLambda);
+
+    // Lambda function for createProduct
+    const createProductLambda = new lambda.Function(this, 'createProductHandler', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'createProduct.handler',
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        PRODUCTS_TABLE_NAME: productsTable.tableName,
+        STOCK_TABLE_NAME: stockTable.tableName,
+      },
+    });
+
+    //grant write access to createProductLambda
+    productsTable.grantWriteData(createProductLambda);
+    stockTable.grantWriteData(createProductLambda);
+
+    // Lambda function for createProduct
+    const deleteProductLambda = new lambda.Function(this, 'deleteProductHandler', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'deleteProduct.handler',
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        PRODUCTS_TABLE_NAME: productsTable.tableName,
+        STOCK_TABLE_NAME: stockTable.tableName,
+      },
+    });
+
+    //grant write access to createProductLambda
+    productsTable.grantWriteData(deleteProductLambda);
+    stockTable.grantWriteData(deleteProductLambda);
 
     // API Gateway
     const api = new apigateway.RestApi(this, 'productServiceApi', {
@@ -30,63 +81,22 @@ export class ProductServiceStack extends cdk.Stack {
       description: 'This service serves product information.',
     });
 
-    const integrationResponses = [{
-      statusCode: '200',
-      responseParameters: {
-        'method.response.header.Access-Control-Allow-Origin': `'${FRONTEND_URL}'`,
-        'method.response.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
-        'method.response.header.Access-Control-Allow-Methods': "'GET,OPTIONS'",
-      },
-    }];
-
-    const methodResponses = [{
-      statusCode: '200',
-      responseParameters: {
-        'method.response.header.Access-Control-Allow-Origin': true,
-        'method.response.header.Access-Control-Allow-Headers': true,
-        'method.response.header.Access-Control-Allow-Methods': true,
-      },
-    }];
-
-    // Products resource (/products)
     const products = api.root.addResource('products');
+    products.addCorsPreflight(CORS_OPTIONS);
+    const getAllIntegration = new apigateway.LambdaIntegration(getProductsListLambda);
+    products.addMethod('GET', getAllIntegration);
 
-    const getAllIntegration = new apigateway.LambdaIntegration(getProductsListLambda, {
-      proxy: false,
-      integrationResponses,
-    });
+    const productsById = products.addResource('{productId}');
+    productsById.addCorsPreflight(CORS_OPTIONS);
 
-    products.addMethod('GET', getAllIntegration, {
-      methodResponses,
-    });
+    const getByIdIntegration = new apigateway.LambdaIntegration(getProductsByIdLambda);
+    const deleteProductIntegration = new apigateway.LambdaIntegration(deleteProductLambda);
+    productsById.addMethod('GET', getByIdIntegration);
+    productsById.addMethod('DELETE', deleteProductIntegration);
 
-    products.addCorsPreflight({
-      allowOrigins: [FRONTEND_URL],
-      allowMethods: ['GET'],
-      allowHeaders: ['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key', 'X-Amz-Security-Token'],
-      allowCredentials: true,
-    });
-
-    // Products by id resource (/products/{productId})
-    const product = products.addResource('{productId}');
-
-    const getByIdIntegration = new apigateway.LambdaIntegration(getProductsByIdLambda, {
-      requestTemplates: {
-        "application/json": `{ "productId": "$input.params('productId')" }`
-      },
-      proxy: false,
-      integrationResponses,
-    });
-
-    product.addMethod('GET', getByIdIntegration, {
-      methodResponses,
-    });
-
-    product.addCorsPreflight({
-      allowOrigins: [FRONTEND_URL],
-      allowMethods: ['GET'],
-      allowHeaders: ['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key', 'X-Amz-Security-Token'],
-      allowCredentials: true,
-    });
+    const product = api.root.addResource('product');
+    product.addCorsPreflight(CORS_OPTIONS);
+    const createProductIntegration = new apigateway.LambdaIntegration(createProductLambda);
+    product.addMethod('PUT', createProductIntegration);
   }
 }
