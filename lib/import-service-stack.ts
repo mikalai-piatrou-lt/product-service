@@ -43,10 +43,33 @@ export class ImportServiceStack extends cdk.Stack {
             description: 'This service imports products files.',
         });
 
+        //import existing authorizer function
+        const authorizerLambdaArn = cdk.Fn.importValue("BasicAuthorizerLambdaArn");
+
+        const authorizerLambda = lambda.Function.fromFunctionAttributes(
+            this,
+            "ImportedAuthorizerLambda",
+            {
+                functionArn: authorizerLambdaArn,
+                sameEnvironment: true,
+            }
+        );
+
+        const basicAuthorizer = new apigateway.TokenAuthorizer(
+            this,
+            "BasicTokenAuthorizer",
+            {
+                handler: authorizerLambda,
+                identitySource: apigateway.IdentitySource.header("Authorization"),
+            }
+        );
+
         const importProducts = api.root.addResource('import');
         importProducts.addCorsPreflight(CORS_OPTIONS);
         const importProductsIntegration = new apigateway.LambdaIntegration(importProductsFileLambda);
-        importProducts.addMethod('GET', importProductsIntegration);
+        importProducts.addMethod('GET', importProductsIntegration, {
+            authorizer: basicAuthorizer,
+        });
 
         const importFileParserLambda = new lambda.Function(this, 'importFileParserHandler', {
             runtime: lambda.Runtime.NODEJS_22_X,
